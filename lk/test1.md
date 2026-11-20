@@ -1,3 +1,6 @@
+
+steering / cluster-ops.md
+
 cluster-ops.md
 
 # Cluster Operations
