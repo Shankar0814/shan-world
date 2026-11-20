@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "es-readonly": {
+      "url": "https://es-mcp-server.platform-engineering-prod.aws.local/mcp"
+    }
+  }
+}
