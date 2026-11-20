@@ -1,0 +1,109 @@
+#!/bin/bash
+
+# -------------------------------------------------------------------
+# Script Name: check_exceptions.sh
+# -------------------------------------------------------------------
+
+clear;
+INPUT_FILE="path.txt"
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+REPORT_FILE1="exception_report_${TIMESTAMP}.txt"
+LAST_NO_OF_LINES=200
+
+###### --------------------
+if [ $# -lt 2 ]; then
+        echo -e "\033[4m\033[1m\033[31m ERROR: Command line arguments are not passed/correctly \033[0m\ng-banker"
+        echo -e "\033[1m\033[32m BELOW IS THE SAMPLE WAY TO EXECUTE THIS SCRIPT ==> $0 ie1p1 cnw\033[0m\n"
+fi
+dataCenter=$1
+service_name=$2
+service_code=`echo $service_name | cut -c1-3`
+
+service_code="${service_code^^}"
+echo "service_code --> $service_code"
+
+
+REPORT_FILE1="$dataCenter"_"$service_name"_"$REPORT_FILE1"
+
+echo "$REPORT_FILE1 --> $REPORT_FILE1"
+
+REPORT_FILE="output/$REPORT_FILE1"
+
+echo "$REPORT_FILE"
+
+
+cat nodes_full_list.txt | grep "$dataCenter" | grep "$service_name" > input.txt
+
+echo "********************** Servers List *********************"
+cat input.txt
+
+EXCEPTIONS="java.rmi.*xception|java.io.*xception|FileNotFoundException|java.lang.*IndexOutOfBoundsException|OutOfMemoryError|StackOverflowError|java.lang.*Illegal|java.sql.*xception|java.net.*xception|SocketTimeoutException|ServiceUnavailableException|SQLException|connect timed out|Read timed out|concurrent.RejectedExecutionException|java.lang.*Illegal|java.lang.NullPointerException|*xception|Geo Location check failed|TransportHandshakeException|Connection refused|Channel closed|Unable to establish connection|TerracottaConnectionException|TerracottaClientShutdownException|ehcache.CacheException|Rejoining cluster|OptionalDataException|Dirty database|dirty|CRITICAL|Terracotta OFFHEAP usage|verification FAILED for.*bpty|Frequent long GC|TxnsInSystemCompletionLister.*Still waiting for completion|Terracotta Server instance has started up as ACTIVE|Moved to PASSIVE-STANDBY|java.lang.reflect.InvocationTargetException|Connection reset"
+
+EXCEPTION_PATTERN="java\.rmi\..*Exception|java\.io\..*Exception|FileNotFoundException|IOException|java\.lang\..*IndexOutOfBoundsException|OutOfMemoryError|StackOverflowError|java\.lang\..*Illegal[A-Za-z]*Exception|java\.sql\..*Exception|java\.net\..*Exception|SocketTimeoutException|ConnectException|ServiceUnavailableException|SQLException|ORA-[0-9]+|connect timed out|Read timed out|concurrent\.RejectedExecutionException|java\.lang\.NullPointerException|Connection reset|MethodInterceptor: exception"
+
+EXCLUDE_EXCEPTIONS="GameInitEmbeddedLaunch::processGameRuleURL.*error|EndGameSession:handleRequest:failing|EndgameSessionEmbeddedLaunch|java.lang.Exception: Real money|java.lang.NullPointerException: null"
+
+# Extract log file paths (everything after :)
+#line=$(grep "^$service_name" "$INPUT_FILE")
+
+line=$(grep "^$service_code:" "$INPUT_FILE")
+echo "line --> $line"
+log_paths=$(echo "$line" | cut -d':' -f2- | sed 's/[[:space:]]*$//')
+
+# Split by comma and read one by one
+IFS=',' read -ra files <<< "$log_paths"
+
+echo "Log files for $SERVER:"
+
+for SERVER_NAME in `cat input.txt`
+do
+    
+    echo -e "\033[33m=====================================================================================\033[0m" | tee -a "$REPORT_FILE"
+    echo -e "\033[33mChecking Server: $SERVER_NAME\033[0m" | tee -a "$REPORT_FILE"
+    echo -e "\033[33m=====================================================================================\033[0m" | tee -a "$REPORT_FILE"
+
+
+for LOGFILE in "${files[@]}"; do
+
+  if [ "$service_code" == "TCC" ] || [ "$service_code" == "TEL" ] || [ "$service_code" == "TCP" ] || [ "$service_code" == "TCH" ] || [ "$service_code" == "TCW" ] || [ "$service_code" == "TCY" ] || [ "$service_code" == "TCG" ] || [ "$service_code" == "TCT" ] ; then
+   
+  echo "TEST --> $SERVER_NAME"
+  LOGFILE=`ssh -q $SERVER_NAME "ls -ld /home/pg/thirdparty/terracotta-server/log/*/terracotta-server.log" | awk '{print $NF}'`
+# LOGFILE=`ssh -q $SERVER_NAME "ls -ld /home/release/release_independent/scripts/offheap_alerts/offheap_monitor.log" | awk '{print $NF}'`
+  echo -e "\033[36m---- Checking Log File: $LOGFILE ----\033[0m" | tee -a "$REPORT_FILE"
+  else
+    echo -e "\033[36m---- Checking Log File: $LOGFILE ----\033[0m" | tee -a "$REPORT_FILE"
+  fi	
+
+	dir_name=$(dirname "$LOGFILE")
+	base_name=$(basename "$LOGFILE")
+
+ssh -q -o BatchMode=yes -o ConnectTimeout=10 $SERVER_NAME "
+
+LOGFILE=\$(find '$dir_name' -name '$base_name' -type f 2>&1 | tail -1);
+#echo 'Result: '\$LOGFILE;
+
+if [ -f \"\$LOGFILE\" ]; then
+	    echo \"Found log file: \$LOGFILE\";
+#            echo \"Found log file: $LOGFILE\";
+#            tail -n 500 \"\$LOGFILE\" |  egrep -v '$EXCLUDE_EXCEPTIONS' | grep --color=always -E -A4 -B2 '$EXCEPTION_PATTERN' && echo -e '\033[31mExceptions found in $LOGFILE \033[0m' || echo -e '\033[32mNo exceptions found in $LOGFILE \033[0m';
+            tail -n $LAST_NO_OF_LINES \"\$LOGFILE\" |  egrep -v '$EXCLUDE_EXCEPTIONS' | grep --color=always -E -A5 -B5 '$EXCEPTIONS' && echo -e '\033[31mExceptions found in $LOGFILE \033[0m' || echo -e '\033[32mNo exceptions found in $LOGFILE \033[0m';
+        else
+	    echo -e \"\033[42mLog file not found: \$LOGFILE\033[0m\";
+#            echo -e \"\033[42mLog file not found: $LOGFILE\033[0m\";
+        fi" 2>&1 | tee -a "$REPORT_FILE"
+
+        echo "" | tee -a "$REPORT_FILE"
+
+	
+done
+#echo "############################################"
+done
+echo "=====================================================================================" | tee -a "$REPORT_FILE"
+echo "Report generated: $REPORT_FILE" | tee -a "$REPORT_FILE"
+echo "====================================================================================="
+
+
+exit;
+
+
