@@ -1,0 +1,56 @@
+query_patterns.md
+
+
+# Query Patterns
+
+## Timestamps
+Always use UTC timestamps (suffix `Z` or `+00:00`). Convert any local time before querying.
+
+## Index Pattern
+Daily indices follow: `ppac-part3-YYYY.MM.DD`
+
+## Field Names
+- App name: `app.name` (e.g., LoginService)
+- Use case: `entry.useCase` (e.g., forcelogoutPartner)
+- Timestamp: `@timestamp`
+- Message: `message`
+
+## Search Logs
+Use `es_post` with `/<index>/_search`:
+```json
+{
+  "size": 5,
+  "sort": [{"@timestamp": "desc"}],
+  "query": {
+    "bool": {
+      "must": [
+        {"match": {"app.name": "LoginService"}},
+        {"range": {"@timestamp": {"gte": "2026-04-16T00:00:00Z", "lte": "2026-04-16T23:59:59Z"}}}
+      ]
+    }
+  }
+}
+```
+
+## Aggregations
+For large datasets, always use aggregations instead of fetching documents. Set `"size": 0`:
+```json
+{
+  "size": 0,
+  "query": {"range": {"@timestamp": {"gte": "now-1d"}}},
+  "aggs": {
+    "by_app": {"terms": {"field": "app.name.keyword", "size": 20}}
+  }
+}
+```
+
+## Count Documents
+Use `es_post` with `/<index>/_count` and a query body.
+
+## Field Exploration
+Use `es_query` with `/<index>/_mapping` to see available fields.
+
+## Limits
+- Default result size: 5
+- Never fetch more than 50 documents at once
+- Sort by `@timestamp: desc` unless asked otherwise
